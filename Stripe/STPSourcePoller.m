@@ -15,6 +15,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 static NSTimeInterval const DefaultPollInterval = 1.5;
 static NSTimeInterval const MaxPollInterval = 24;
+// Stop polling after 5 minutes
+static NSTimeInterval const Timeout = 60*5;
+// Stop polling after 5 consecutive non-200 responses
+static NSTimeInterval const MaxRetries = 5;
 
 @interface STPSourcePoller ()
 
@@ -26,6 +30,8 @@ static NSTimeInterval const MaxPollInterval = 24;
 @property (nonatomic) NSTimeInterval pollInterval;
 @property (nonatomic, nullable) NSURLSessionDataTask *dataTask;
 @property (nonatomic, nullable) NSTimer *timer;
+@property (nonatomic) NSDate *startTime;
+@property (nonatomic) NSInteger retryCount;
 
 @end
 
@@ -42,6 +48,8 @@ static NSTimeInterval const MaxPollInterval = 24;
         _clientSecret = clientSecret;
         _completion = completion;
         _pollInterval = DefaultPollInterval;
+        _startTime = [NSDate date];
+        _retryCount = 0;
         [self pollAfter:0];
         NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
         [notificationCenter addObserver:self
@@ -77,7 +85,8 @@ static NSTimeInterval const MaxPollInterval = 24;
 }
 
 - (void)poll {
-    if (!self.apiClient) {
+    NSTimeInterval totalTime = [[NSDate date] timeIntervalSinceDate:self.startTime];
+    if (!self.apiClient || totalTime >= Timeout || self.retryCount >= MaxRetries) {
         [self stopPolling];
         return;
     }
@@ -97,12 +106,12 @@ static NSTimeInterval const MaxPollInterval = 24;
 - (void)continueWithSource:(STPSource *)source
                   response:(NSHTTPURLResponse *)response
                      error:(NSError *)error {
-    // TODO: max retries
     if (response) {
         NSUInteger status = response.statusCode;
         if (status >= 400 && status < 500) {
             // Don't retry requests that 4xx
             self.completion(self.latestSource, error);
+            [self stopPolling];
         } else if (status == 200) {
             self.pollInterval = DefaultPollInterval;
             // Only call completion if source.status has changed
@@ -112,7 +121,10 @@ static NSTimeInterval const MaxPollInterval = 24;
             self.latestSource = source;
             if ([self shouldContinuePollingSource:source]) {
                 [self pollAfter:self.pollInterval];
+            } else {
+                [self stopPolling];
             }
+            self.retryCount = 0;
         } else {
             // Backoff on 500, otherwise reset poll interval
             if (status == 500) {
@@ -121,6 +133,7 @@ static NSTimeInterval const MaxPollInterval = 24;
                 self.pollInterval = DefaultPollInterval;
             }
             [self pollAfter:self.pollInterval];
+            self.retryCount++;
         }
     } else {
         // Retry if there's a connectivity error, otherwise stop polling
@@ -129,6 +142,7 @@ static NSTimeInterval const MaxPollInterval = 24;
             [self pollAfter:self.pollInterval];
         } else {
             self.completion(self.latestSource, error);
+            [self stopPolling];
         }
     }
 }
