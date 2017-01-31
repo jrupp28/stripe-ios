@@ -319,14 +319,14 @@ static NSString *const stripeAPIVersion = @"2015-10-12";
     }];
 }
 
-- (void)retrieveSourceWithId:(NSString *)identifier clientSecret:(NSString *)secret responseCompletion:(STPAPIResponseBlock)completion {
+- (NSURLSessionDataTask *)retrieveSourceWithId:(NSString *)identifier clientSecret:(NSString *)secret responseCompletion:(STPAPIResponseBlock)completion {
     NSString *endpoint = [NSString stringWithFormat:@"%@/%@", sourcesEndpoint, identifier];
     NSDictionary *parameters = @{@"client_secret": secret};
-    [STPAPIRequest<STPSource *> getWithAPIClient:self
-                                        endpoint:endpoint
-                                      parameters:parameters
-                                      serializer:[STPSource new]
-                                      completion:completion];
+    return [STPAPIRequest<STPSource *> getWithAPIClient:self
+                                               endpoint:endpoint
+                                             parameters:parameters
+                                             serializer:[STPSource new]
+                                             completion:completion];
 }
 
 - (void)startPollingSourceWithId:(NSString *)identifier clientSecret:(NSString *)secret completion:(STPSourceCompletionBlock)completion {

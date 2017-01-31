@@ -21,7 +21,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)createTokenWithData:(NSData *)data
                  completion:(STPTokenCompletionBlock)completion;
 
-- (void)retrieveSourceWithId:(NSString *)identifier clientSecret:(NSString *)secret responseCompletion:(STPAPIResponseBlock)completion;
+- (NSURLSessionDataTask *)retrieveSourceWithId:(NSString *)identifier clientSecret:(NSString *)secret responseCompletion:(STPAPIResponseBlock)completion;
 
 @property (nonatomic, readwrite) NSURL *apiURL;
 @property (nonatomic, readwrite) NSURLSession *urlSession;
