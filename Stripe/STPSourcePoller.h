@@ -13,6 +13,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+NS_EXTENSION_UNAVAILABLE("Source polling is not available in extensions")
 @interface STPSourcePoller : NSObject
 
 - (instancetype)init NS_UNAVAILABLE;

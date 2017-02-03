@@ -62,7 +62,7 @@ static NSString *const stripeAPIVersion = @"2015-10-12";
 #endif
 @property (nonatomic, readwrite) NSURL *apiURL;
 @property (nonatomic, readwrite) NSURLSession *urlSession;
-@property (nonatomic, readwrite) NSMutableDictionary<NSString *,STPSourcePoller *>*sourcePollers;
+@property (nonatomic, readwrite) NSMutableDictionary<NSString *,NSObject *>*sourcePollers;
 @property (nonatomic, readwrite) dispatch_queue_t sourcePollersQueue;
 @end
 
@@ -341,7 +341,7 @@ static NSString *const stripeAPIVersion = @"2015-10-12";
 
 - (void)stopPollingSourceWithId:(NSString *)identifier {
     dispatch_async(self.sourcePollersQueue, ^{
-        STPSourcePoller *poller = self.sourcePollers[identifier];
+        STPSourcePoller *poller = (STPSourcePoller *)self.sourcePollers[identifier];
         if (poller) {
             [poller stopPolling];
             self.sourcePollers[identifier] = nil;

@@ -32,6 +32,9 @@ static NSTimeInterval const MaxRetries = 5;
 @property (nonatomic, nullable) NSTimer *timer;
 @property (nonatomic) NSDate *startTime;
 @property (nonatomic) NSInteger retryCount;
+@property (nonatomic) NSInteger requestCount;
+@property (nonatomic) BOOL pollingPaused;
+@property (nonatomic) BOOL pollingStopped;
 
 @end
 
@@ -50,6 +53,9 @@ static NSTimeInterval const MaxRetries = 5;
         _pollInterval = DefaultPollInterval;
         _startTime = [NSDate date];
         _retryCount = 0;
+        _requestCount = 0;
+        _pollingPaused = NO;
+        _pollingStopped = NO;
         [self pollAfter:0 lastError:nil];
         NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
         [notificationCenter addObserver:self
@@ -61,11 +67,11 @@ static NSTimeInterval const MaxRetries = 5;
                                    name:UIApplicationWillEnterForegroundNotification
                                  object:nil];
         [notificationCenter addObserver:self
-                               selector:@selector(stopPolling)
+                               selector:@selector(pausePolling)
                                    name:UIApplicationWillResignActiveNotification
                                  object:nil];
         [notificationCenter addObserver:self
-                               selector:@selector(stopPolling)
+                               selector:@selector(pausePolling)
                                    name:UIApplicationDidEnterBackgroundNotification
                                  object:nil];
     }
@@ -78,9 +84,14 @@ static NSTimeInterval const MaxRetries = 5;
 
 - (void)pollAfter:(NSTimeInterval)interval lastError:(nullable NSError *)error {
     NSTimeInterval totalTime = [[NSDate date] timeIntervalSinceDate:self.startTime];
-    if (!self.apiClient || totalTime >= Timeout || self.retryCount >= MaxRetries) {
+    BOOL shouldTimeout = (self.requestCount > 0 &&
+                          (totalTime >= Timeout || self.retryCount >= MaxRetries));
+    if (!self.apiClient || shouldTimeout) {
         self.completion(self.latestSource, error);
         [self stopPolling];
+        return;
+    }
+    if (self.pollingPaused || self.pollingStopped) {
         return;
     }
     self.timer = [NSTimer scheduledTimerWithTimeInterval:interval
@@ -91,17 +102,23 @@ static NSTimeInterval const MaxRetries = 5;
 }
 
 - (void)poll {
+    self.timer = nil;
+    UIApplication *application = [UIApplication sharedApplication];
+    __block UIBackgroundTaskIdentifier bgTaskID = UIBackgroundTaskInvalid;
+    bgTaskID = [application beginBackgroundTaskWithExpirationHandler:^{
+        self.dataTask = nil;
+        [application endBackgroundTask:bgTaskID];
+        bgTaskID = UIBackgroundTaskInvalid;
+    }];
     self.dataTask = [self.apiClient retrieveSourceWithId:self.sourceID
                                             clientSecret:self.clientSecret
                                       responseCompletion:^(STPSource *source, NSHTTPURLResponse *response, NSError *error) {
                                           [self continueWithSource:source response:response error:error];
+                                          self.requestCount++;
+                                          self.dataTask = nil;
+                                          [application endBackgroundTask:bgTaskID];
+                                          bgTaskID = UIBackgroundTaskInvalid;
                                       }];
-}
-
-- (void)restartPolling {
-    if (!self.timer && !self.dataTask) {
-        [self pollAfter:0 lastError:nil];
-    }
 }
 
 - (void)continueWithSource:(STPSource *)source
@@ -155,7 +172,28 @@ static NSTimeInterval const MaxRetries = 5;
     return source.status == STPSourceStatusPending;
 }
 
+- (void)restartPolling {
+    if (self.pollingStopped) {
+        return;
+    }
+    self.pollingPaused = NO;
+    if (!self.timer && !self.dataTask) {
+        [self pollAfter:0 lastError:nil];
+    }
+}
+
+// Pauses polling, without canceling the request in progress.
+- (void)pausePolling {
+    self.pollingPaused = YES;
+    if (self.timer) {
+        [self.timer invalidate];
+        self.timer = nil;
+    }
+}
+
+// Stops polling and cancels the request in progress.
 - (void)stopPolling {
+    self.pollingStopped = YES;
     if (self.timer) {
         [self.timer invalidate];
         self.timer = nil;
