@@ -136,12 +136,15 @@ static NSTimeInterval const MaxRetries = 5;
             self.retryCount++;
         }
     } else {
-        // Retry if there's a connectivity error, otherwise stop polling
-        if (error && (error.code == kCFURLErrorNotConnectedToInternet ||
-                      error.code == kCFURLErrorNetworkConnectionLost)) {
+        // Retry if there's a connectivity error; don't increment retryCount
+        if (error.code == kCFURLErrorNotConnectedToInternet ||
+            error.code == kCFURLErrorNetworkConnectionLost) {
             [self pollAfter:self.pollInterval];
         } else {
-            self.completion(self.latestSource, error);
+            // Don't call completion if the request was cancelled
+            if (error.code != kCFURLErrorCancelled) {
+                self.completion(self.latestSource, error);
+            }
             [self stopPolling];
         }
     }
