@@ -166,7 +166,8 @@ static NSString *const STPSDKVersion = @"9.3.0";
  *  allows you to determine if the action was successful. The provided callback will be
  *  called as soon as the source is retrieved, and every time its status is updated.
  *  Polling will end if the source's status is one of `chargeable`, `canceled`, or
- *  `consumed`.
+ *  `consumed`. Note that if a poll is already running for a source, subsequent
+ *  calls to `startPolling` with the same source ID will do nothing.
  *
  *  @param identifier  The identifier of the source to be retrieved. Cannot be nil.
  *  @param secret      The client secret of the source. Cannot be nil.
@@ -175,7 +176,8 @@ static NSString *const STPSDKVersion = @"9.3.0";
 - (void)startPollingSourceWithId:(NSString *)identifier clientSecret:(NSString *)secret completion:(STPSourceCompletionBlock)completion;
 
 /**
- *  Stops polling the Source object with the given ID.
+ *  Stops polling the Source object with the given ID. Note that the completion block passed to
+ *  `startPolling` will not be fired when `stopPolling` is called.
  *
  *  @param identifier  The identifier of the source to be retrieved. Cannot be nil.
  */
