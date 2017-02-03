@@ -114,6 +114,7 @@ static NSTimeInterval const MaxRetries = 5;
             [self stopPolling];
         } else if (status == 200) {
             self.pollInterval = DefaultPollInterval;
+            self.retryCount = 0;
             // Only call completion if source.status has changed
             if (!self.latestSource || source.status != self.latestSource.status) {
                 self.completion(source, nil);
@@ -124,16 +125,11 @@ static NSTimeInterval const MaxRetries = 5;
             } else {
                 [self stopPolling];
             }
-            self.retryCount = 0;
         } else {
-            // Backoff on 500, otherwise reset poll interval
-            if (status == 500) {
-                self.pollInterval = MIN(self.pollInterval*2, MaxPollInterval);
-            } else {
-                self.pollInterval = DefaultPollInterval;
-            }
-            [self pollAfter:self.pollInterval];
+            // Backoff and increment retry count
+            self.pollInterval = MIN(self.pollInterval*2, MaxPollInterval);
             self.retryCount++;
+            [self pollAfter:self.pollInterval];
         }
     } else {
         // Retry if there's a connectivity error; don't increment retryCount
