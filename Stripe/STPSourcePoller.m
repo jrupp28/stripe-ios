@@ -50,7 +50,7 @@ static NSTimeInterval const MaxRetries = 5;
         _pollInterval = DefaultPollInterval;
         _startTime = [NSDate date];
         _retryCount = 0;
-        [self pollAfter:0];
+        [self pollAfter:0 lastError:nil];
         NSNotificationCenter *notificationCenter = [NSNotificationCenter defaultCenter];
         [notificationCenter addObserver:self
                                selector:@selector(restartPolling)
@@ -76,7 +76,13 @@ static NSTimeInterval const MaxRetries = 5;
     [[NSNotificationCenter defaultCenter] removeObserver:self];
 }
 
-- (void)pollAfter:(NSTimeInterval)interval {
+- (void)pollAfter:(NSTimeInterval)interval lastError:(nullable NSError *)error {
+    NSTimeInterval totalTime = [[NSDate date] timeIntervalSinceDate:self.startTime];
+    if (!self.apiClient || totalTime >= Timeout || self.retryCount >= MaxRetries) {
+        self.completion(self.latestSource, error);
+        [self stopPolling];
+        return;
+    }
     self.timer = [NSTimer scheduledTimerWithTimeInterval:interval
                                                   target:self
                                                 selector:@selector(poll)
@@ -85,11 +91,6 @@ static NSTimeInterval const MaxRetries = 5;
 }
 
 - (void)poll {
-    NSTimeInterval totalTime = [[NSDate date] timeIntervalSinceDate:self.startTime];
-    if (!self.apiClient || totalTime >= Timeout || self.retryCount >= MaxRetries) {
-        [self stopPolling];
-        return;
-    }
     self.dataTask = [self.apiClient retrieveSourceWithId:self.sourceID
                                             clientSecret:self.clientSecret
                                       responseCompletion:^(STPSource *source, NSHTTPURLResponse *response, NSError *error) {
@@ -99,7 +100,7 @@ static NSTimeInterval const MaxRetries = 5;
 
 - (void)restartPolling {
     if (!self.timer && !self.dataTask) {
-        [self pollAfter:0];
+        [self pollAfter:0 lastError:nil];
     }
 }
 
@@ -121,7 +122,7 @@ static NSTimeInterval const MaxRetries = 5;
             }
             self.latestSource = source;
             if ([self shouldContinuePollingSource:source]) {
-                [self pollAfter:self.pollInterval];
+                [self pollAfter:self.pollInterval lastError:nil];
             } else {
                 [self stopPolling];
             }
@@ -129,13 +130,14 @@ static NSTimeInterval const MaxRetries = 5;
             // Backoff and increment retry count
             self.pollInterval = MIN(self.pollInterval*2, MaxPollInterval);
             self.retryCount++;
-            [self pollAfter:self.pollInterval];
+            [self pollAfter:self.pollInterval lastError:error];
         }
     } else {
-        // Retry if there's a connectivity error; don't increment retryCount
+        // Retry if there's a connectivity error
         if (error.code == kCFURLErrorNotConnectedToInternet ||
             error.code == kCFURLErrorNetworkConnectionLost) {
-            [self pollAfter:self.pollInterval];
+            self.retryCount++;
+            [self pollAfter:self.pollInterval lastError:error];
         } else {
             // Don't call completion if the request was cancelled
             if (error.code != kCFURLErrorCancelled) {
