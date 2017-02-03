@@ -63,6 +63,7 @@ static NSString *const stripeAPIVersion = @"2015-10-12";
 @property (nonatomic, readwrite) NSURL *apiURL;
 @property (nonatomic, readwrite) NSURLSession *urlSession;
 @property (nonatomic, readwrite) NSMutableDictionary<NSString *,STPSourcePoller *>*sourcePollers;
+@property (nonatomic, readwrite) dispatch_queue_t sourcePollersQueue;
 @end
 
 @implementation STPAPIClient
@@ -106,6 +107,7 @@ static NSString *const stripeAPIVersion = @"2015-10-12";
                                                        };
         _urlSession = [NSURLSession sessionWithConfiguration:sessionConfiguration];
         _sourcePollers = [NSMutableDictionary dictionary];
+        _sourcePollersQueue = dispatch_queue_create("com.stripe.sourcepollers", DISPATCH_QUEUE_SERIAL);
     }
     return self;
 }
@@ -332,15 +334,19 @@ static NSString *const stripeAPIVersion = @"2015-10-12";
 - (void)startPollingSourceWithId:(NSString *)identifier clientSecret:(NSString *)secret completion:(STPSourceCompletionBlock)completion {
     [self stopPollingSourceWithId:identifier];
     STPSourcePoller *poller = [[STPSourcePoller alloc] initWithAPIClient:self clientSecret:secret sourceID:identifier completion:completion];
-    self.sourcePollers[identifier] = poller;
+    dispatch_async(self.sourcePollersQueue, ^{
+        self.sourcePollers[identifier] = poller;
+    });
 }
 
 - (void)stopPollingSourceWithId:(NSString *)identifier {
-    STPSourcePoller *poller = self.sourcePollers[identifier];
-    if (poller) {
-        [poller stopPolling];
-        self.sourcePollers[identifier] = nil;
-    }
+    dispatch_async(self.sourcePollersQueue, ^{
+        STPSourcePoller *poller = self.sourcePollers[identifier];
+        if (poller) {
+            [poller stopPolling];
+            self.sourcePollers[identifier] = nil;
+        }
+    });
 }
 
 @end
